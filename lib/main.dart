@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:parse_server_sdk/parse_server_sdk.dart';
 
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   const keyAppId = 'Mv1H4q0DwIkv7GCaTxLv59K8ela6F8fxrYYGJ0d0';
@@ -23,8 +24,13 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Back4App Web CRUD',
-      theme: ThemeData(primarySwatch: Colors.blue),
+      title: 'Back4App Flutter CRUD',
+      theme: ThemeData(
+        primarySwatch: Colors.pink,
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(),
+        ),
+      ),
       home: LoginPage(),
     );
   }
@@ -38,43 +44,89 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  String message = '';
+  bool _isLoading = false;
+
+  void _showMessage(String text, {bool error = true}) {
+    final color = error ? Colors.red : Colors.green;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), backgroundColor: color),
+    );
+  }
 
   Future<void> login() async {
-    final user = ParseUser(_usernameController.text, _passwordController.text, null);
+    setState(() => _isLoading = true);
+    final user = ParseUser(_usernameController.text.trim(), _passwordController.text.trim(), null);
     final response = await user.login();
+
+    setState(() => _isLoading = false);
+
     if (response.success) {
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage()));
     } else {
-      setState(() => message = response.error!.message);
+      _showMessage(response.error?.message ?? 'Login failed');
     }
   }
 
   Future<void> signUp() async {
-    final user = ParseUser(_usernameController.text, _passwordController.text, _usernameController.text + '@email.com');
+    setState(() => _isLoading = true);
+    final email = '${_usernameController.text.trim()}@email.com';
+    final user = ParseUser(_usernameController.text.trim(), _passwordController.text.trim(), email);
     final response = await user.signUp();
+
+    setState(() => _isLoading = false);
+
     if (response.success) {
-      setState(() => message = "Account created! Please log in.");
+      _showMessage("Account created! Please log in.", error: false);
     } else {
-      setState(() => message = response.error!.message);
+      _showMessage(response.error?.message ?? 'Sign up failed');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Login or Sign Up")),
+      appBar: AppBar(title: Text("Welcome")),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            TextField(controller: _usernameController, decoration: InputDecoration(labelText: "Username")),
-            TextField(controller: _passwordController, decoration: InputDecoration(labelText: "Password"), obscureText: true),
-            SizedBox(height: 16),
-            ElevatedButton(onPressed: login, child: Text("Login")),
-            ElevatedButton(onPressed: signUp, child: Text("Sign Up")),
-            Text(message, style: TextStyle(color: Colors.red)),
-          ],
+        padding: const EdgeInsets.all(24.0),
+        child: Center(
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                Icon(Icons.lock_outline, size: 100, color: Colors.deepPurpleAccent),
+                SizedBox(height: 20),
+                TextField(
+                  controller: _usernameController,
+                  decoration: InputDecoration(labelText: "Username"),
+                ),
+                SizedBox(height: 12),
+                TextField(
+                  controller: _passwordController,
+                  decoration: InputDecoration(labelText: "Password"),
+                  obscureText: true,
+                ),
+                SizedBox(height: 20),
+                _isLoading
+                    ? CircularProgressIndicator()
+                    : Column(
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: login,
+                            icon: Icon(Icons.login),
+                            label: Text("Login"),
+                            style: ElevatedButton.styleFrom(minimumSize: Size.fromHeight(50)),
+                          ),
+                          SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            onPressed: signUp,
+                            icon: Icon(Icons.person_add),
+                            label: Text("Sign Up"),
+                            style: OutlinedButton.styleFrom(minimumSize: Size.fromHeight(50)),
+                          ),
+                        ],
+                      )
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -99,7 +151,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> addItem() async {
-    final item = ParseObject('Item')..set('name', _itemController.text);
+    if (_itemController.text.trim().isEmpty) return;
+    final item = ParseObject('Item')..set('name', _itemController.text.trim());
     await item.save();
     _itemController.clear();
     fetchItems();
@@ -108,6 +161,12 @@ class _HomePageState extends State<HomePage> {
   Future<void> deleteItem(ParseObject item) async {
     await item.delete();
     fetchItems();
+  }
+
+  Future<void> logout() async {
+    final user = await ParseUser.currentUser() as ParseUser;
+    await user.logout();
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginPage()));
   }
 
   @override
@@ -119,29 +178,48 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Item List")),
+      appBar: AppBar(
+        title: Text("Your Items"),
+        actions: [
+          IconButton(onPressed: logout, icon: Icon(Icons.logout)),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(12.0),
             child: Row(
               children: [
-                Expanded(child: TextField(controller: _itemController, decoration: InputDecoration(labelText: "New Item"))),
-                IconButton(onPressed: addItem, icon: Icon(Icons.add))
+                Expanded(
+                  child: TextField(
+                    controller: _itemController,
+                    decoration: InputDecoration(labelText: "Add new item"),
+                  ),
+                ),
+                SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: addItem,
+                  child: Icon(Icons.add),
+                )
               ],
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              itemCount: items.length,
-              itemBuilder: (context, index) {
-                final item = items[index];
-                return ListTile(
-                  title: Text(item.get<String>('name') ?? ''),
-                  trailing: IconButton(icon: Icon(Icons.delete), onPressed: () => deleteItem(item)),
-                );
-              },
-            ),
+            child: items.isEmpty
+                ? Center(child: Text("No items yet."))
+                : ListView.builder(
+                    itemCount: items.length,
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      return ListTile(
+                        title: Text(item.get<String>('name') ?? ''),
+                        trailing: IconButton(
+                          icon: Icon(Icons.delete, color: Colors.pinkAccent),
+                          onPressed: () => deleteItem(item),
+                        ),
+                      );
+                    },
+                  ),
           )
         ],
       ),
